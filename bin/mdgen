@@ -1,0 +1,74 @@
+#!/bin/bash
+# vim: tw=76
+
+# License: BSD 3-clause
+# Author: Josh Cepek
+
+# Markdown to HTML generator
+name=mdgen
+
+usage() {
+	cat <<EOM
+$name Usage:
+
+$name [-out OUTDIR] file1 [file2..]
+
+Converts each input file through the python3 markdown module.
+
+If the -out flag is supplied, this sets the output directory. If -out is not
+supplied before any files, the env-var MD_OUTDIR must be defined. It is an
+error to use neither. Note that multiple -out flags may be provided; if set
+after the first file, the output dir is re-defined to use the new path.
+
+By default, each file is stripped of its final extension and .html is added.
+Define MD_NOSTRIP to keep the extension (so in.md -> in.md.html) instead.
+
+If your file is named matching any special keyword like -out, -h, -help, or
+--help, you must use the '--' parameter to avoid processing it as a special
+command. If your file is named '--', you can use '$name -- --' as the
+command. While I hope this support isn't needed, it's here.
+
+EOM
+	exit 0
+}
+
+warn() { echo "$1" >&2; }
+die() {
+	warn "${1:-Unspecified fatal error}"
+	exit ${2:-1}
+}
+
+md_parse() {
+	[ -z "$MD_OUTDIR" ] && \
+		die "No MD_OUTDIR env-var (or -out <dir>). Don't know where to send output."
+	[ -d "$MD_OUTDIR" ] || \
+		die "No such output dir MD_OUTDIR found at: $MD_OUTDIR"
+	local out="${1##*/}"
+	[ -z "$MD_NOSTRIP" ] && out="${out%.*}"
+	out="${MD_OUTDIR}/${out}.html"
+	warn " $name processing: '$1' ..."
+	python3 -m markdown "$1" > "$out" || \
+		warn "WARNING: Failed to write $1 to output at $out"
+}
+
+[ $? -eq 0 ] || usage
+# Parse input:
+while [ -n "$1" ]
+do	case "$1" in
+	--)
+		md_parse "$2"
+		shift
+		;;
+	-h|-help|--help)
+		usage ;;
+	-out)
+		MD_OUTDIR="$2"
+		shift
+		;;
+	*)
+		md_parse "$1"
+		;;
+	esac
+
+	shift
+done
