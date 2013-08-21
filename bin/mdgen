@@ -51,7 +51,7 @@ md_parse() {
 		warn "WARNING: Failed to write $1 to output at $out"
 }
 
-[ $? -eq 0 ] || usage
+[ $# -gt 0 ] || usage
 # Parse input:
 while [ -n "$1" ]
 do	case "$1" in
