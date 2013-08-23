@@ -1,5 +1,7 @@
 #!/bin/sh
-# $Id: init 64 2013-04-17 05:15:38Z josh $
+
+# Copyright Josh Cepek
+# License: GPLv3
 
 #rescue function in case something is going wrong
 rescue_shell() {

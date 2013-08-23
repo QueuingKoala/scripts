@@ -1,5 +1,7 @@
 #!/bin/bash
-# $Id: buildramfs 65 2013-04-19 20:25:18Z josh $
+
+# Copyright Josh Cepek
+# License: GPLv3
 
 # Where to send the finished build
 target=${1:-/boot/initramfs}
