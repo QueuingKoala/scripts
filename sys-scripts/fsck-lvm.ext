@@ -1,7 +1,6 @@
 #!/bin/bash
-# $Id: fsck-lvm.ext 65 2009-07-10 05:45:49Z josh $
 
-# Copyright 2009 Josh Cepek
+# Copyright Josh Cepek
 # Released under the GPLv3 license
 
 usage() {
@@ -9,7 +8,7 @@ cat << EOF
 Usage:
 
 Synopsis:
-$0 VolGroup LogVol SnapshotSize [[fullDevicePath] [snapLogVolName]]
+$0 [opts] VolGroup LogVol SnapshotSize [[fullDevicePath] [snapLogVolName]]
 
 Paramaters:
 VolGroup: The volume group. eg: vg0
@@ -19,6 +18,9 @@ fullDevicePath (optional): The full device path
   If omitted defaults to /dev/<VolGroup>/<LogVol>
 snapLogVolName (optional): The name for the snapshot volume
   If omitted defaults to <lv>-snap
+
+Leading options (opts) may include:
+  (TODO: support to be added in the future for logging)
 EOF
 exit 64
 }
