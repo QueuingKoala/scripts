@@ -1,0 +1,52 @@
+#!/bin/bash
+# $Id: fsck-lvm.ext 65 2009-07-10 05:45:49Z josh $
+
+# Copyright 2009 Josh Cepek
+# Released under the GPLv3 license
+
+usage() {
+cat << EOF
+Usage:
+
+Synopsis:
+$0 VolGroup LogVol SnapshotSize [[fullDevicePath] [snapLogVolName]]
+
+Paramaters:
+VolGroup: The volume group. eg: vg0
+LogVol: The logical volume. eg: lv0
+SnapshotSize: The growable size for the snapshot: eg: 100M
+fullDevicePath (optional): The full device path
+  If omitted defaults to /dev/<VolGroup>/<LogVol>
+snapLogVolName (optional): The name for the snapshot volume
+  If omitted defaults to <lv>-snap
+EOF
+exit 64
+}
+
+die() {
+	echo "$1" 1>&2
+	exit ${2:-4}
+}
+panic() {
+	local err="$1"
+	local code=$2
+	lvremove -f $vg/$snapname &>/dev/null || die "$err AND FAILED TO REMOVE SNAPSHOT" $((64|${code:-0}))
+	die "$err" $code
+}
+
+vg="$1"
+lv="$2"
+size="$3"
+device="${4:-/dev/$vg/$lv}"
+snapname="${5:-$lv-snap}"
+snapvol="/dev/$vg/$snapname"
+
+[ -n "$vg" -a -n "$lv" -a -n "$size" ] || usage
+
+timestamp=$(date "+%Y%m%d%H%M%S")
+lvcreate -s -n $snapname -L $size $vg/$lv &>/dev/null || die "Failed to create snapshot" 64
+e2fsck -f -n $snapvol &>/dev/null || panic "$vg/$snapname has errors" $?
+ret=$?
+tune2fs -C 0 -T $timestamp $device &>/dev/null || panic "$vg/$lv passed but cannot set fsck time"
+lvremove -f $vg/$snapname &>/dev/null || die "$vg/$lv passed BUT FAILED TO REMOVE SNAPSHOT" 64
+exit $ret
