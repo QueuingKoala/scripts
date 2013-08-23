@@ -1,0 +1,94 @@
+#!/bin/bash
+# $Id: buildramfs 65 2013-04-19 20:25:18Z josh $
+
+# Where to send the finished build
+target=${1:-/boot/initramfs}
+# The staging dir, relative to the CWD
+staging=${2:-staging}
+
+# Helper functions
+
+# do_cp file [file...] target
+# For each file, verify it exists and copy it to the target.
+# On any failure, report the status and abort.
+do_cp() {
+	while [ -n "$2" ]; do
+		[ -f "$1" ] || abort "Missing file: '$1'"
+		cp "$1" "$?"
+		shift 1
+	done
+}
+
+# cleanup()
+cleanup() {
+	cd $init_dir
+	# Set $NOCLEANUP to non-null to prevent removal
+	[ -z "$NOCLEANUP" ] && rm -rf "$staging"
+	exit ${1:-0}
+}
+
+#abort()
+abort() {
+	echo "$1" >&2
+	cleanup ${2:-1}
+}
+
+# cp_rel handles copying live FS files to a relative staging location.
+# Files already existing inside staging are ignored
+cp_rel() {
+	fullpath="$1"
+	relpath="${1#/}"
+	reldir="${relpath%/*}"
+	shift 1
+	opts="$@"
+	# check for and copy if needed
+	[ -f "$relpath" ] && return
+	mkdir -p "$reldir"
+	cp $opts "$fullpath" "$reldir"
+}
+
+[ -e "$staging" ] && abort "FATAL: Aborting as '$staging' exists"
+
+# Set varialbes and move into staging dir
+init_dir="$PWD"
+mkdir "$staging"
+cd "$staging"
+
+# Create the staging dir and create structure
+mkdir bin dev etc newroot proc sbin sys
+cp /bin/busybox bin
+[ -x /sbin/v86d ] && cp /sbin/v86d sbin
+cp /sbin/fsck /sbin/fsck.ext4 /sbin/lvm.static sbin
+
+mv sbin/lvm.static sbin/lvm
+# Set up busybox symlinks
+for name in bin/cat bin/mount bin/vi bin/sh bin/switch_root bin/umount bin/sleep \
+  bin/cp bin/rm bin/mv bin/ln bin/reboot bin/findfs; do
+	ln -s busybox $name
+done
+
+# Copy in any dynamic libraries required
+dynamic_bins="sbin/fsck sbin/fsck.ext4"
+ldd $dynamic_bins | grep -v ':$' | grep -Eo '/[[:alnum:]/\._\-]*' | \
+  while read libname; do
+	cp_rel "$libname"
+  done
+
+# Drop in our init script
+cd "$init_dir"
+cmd_relpath="${0%/*}"
+init_prefix=""
+[ -n "$cmd_relpath" ] && init_prefix="/"
+cp "${cmd_relpath}${init_prefix}init" "$staging" || \
+  abort "Failed to copy init file (is it present?)"
+
+# Finally, create the initramfs
+
+cd "$staging"
+target="${target/#./..}"
+find . | cpio --quiet -o -H newc | gzip -9 > $target
+cd "$init_dir"
+
+echo "if successful, new archive is in $target"
+
+cleanup

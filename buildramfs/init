@@ -1,0 +1,86 @@
+#!/bin/sh
+# $Id: init 64 2013-04-17 05:15:38Z josh $
+
+#rescue function in case something is going wrong
+rescue_shell() {
+	echo "Something went wrong ($1). Dropping you to a shell."
+	busybox --install -s
+	exec /bin/sh
+}
+
+parse_args() {
+	local arg dev type ret=111
+	for arg in $(cat /proc/cmdline); do
+		case $arg in
+		root=*)
+			dev=$(echo $arg | cut -d= -f2)
+			if [ "$dev" == "LABEL" ] || [ "$dev" == "UUID" ]; then
+				type=$dev
+				dev=$(echo $arg | cut -d= -f3)
+				dev=$(findfs "$type"="$dev")
+			fi
+			fs_fsck $dev "root"
+			mount -r $dev /newroot
+			ret=$?
+			;;
+		forcefsck=1)
+			fsck_opts="$fsck_opts -f" ;;
+		*)
+			CMDLINE="$CMDLINE $arg" ;;
+		esac
+	done
+	return $ret
+}
+
+fs_fsck() {
+	echo "Checking filesystem : $1 ${2:+($2)}"
+	trap : INT QUIT
+	/sbin/fsck -p -C0 -T $fsck_opts $1
+	case $? in
+	0) return 0;;
+	1) echo "Filesystem repaired"; return 0;;
+	2|3) echo "Filesystem repaired, reboot needed"; reboot -f;;
+	4) rescue_shell "Filesystem errors left uncorrected!";;
+	8) echo "Operational error"; return 0;;
+	12) rescue_shell "fsck interrupted";;
+	*) rescue_shell "Filesystem couldn't be fixed";;
+	esac
+}
+
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+
+#wait a little to avoid trailing kernel output
+sleep 1
+
+#raid
+#/bin/mdadm --assemble /dev/md2 /dev/sda2 /dev/sdb2 || rescue_shell
+#dm-crypt
+#/bin/cryptsetup luksOpen /dev/md2 vault || rescue_shell
+
+#lvm
+#/sbin/lvm vgscan
+/sbin/lvm vgchange -ay vg0 || rescue_shell "lvm vgchange"
+
+# Parse boot args, handling mounting of root FS as root= argument:
+parse_args || rescue_shell "parse_args() failed: $?"
+
+mounts="/usr /var"
+ln -s /newroot/etc/fstab /etc/fstab
+for m in $mounts; do
+	fs_fsck $m
+	echo "Mounting $m"
+	mkdir -p $m
+	mount $m || rescue_shell "Error mounting $m"
+	mount --move $m "/newroot/$m" || rescue_shell "Error moving $m"
+done
+
+#unmount pseudo FS
+umount /sys || rescue_shell "umount /sys"
+umount /proc || rescue_shell "umount /proc"
+umount /dev || rescue_shell "umount /dev"
+
+#root switch
+echo "Initramfs now switching to real root."
+exec /bin/busybox switch_root /newroot /sbin/init ${CMDLINE}
